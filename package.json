@@ -1,0 +1,91 @@
+{
+  "name": "odin-debugwindows",
+  "displayName": "odin-DebugWindows",
+  "description": "一个开发时候用的调试窗口",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.74.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "panel": [
+        {
+          "id": "debugWindow",
+          "title": "调试窗口",
+          "icon": "$(debug)"
+        }
+      ]
+    },
+    "views": {
+      "debugWindow": [
+        {
+          "id": "debugWindow",
+          "name": "调试窗口",
+          "type": "webview",
+          "when": "true"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "odin-debugwindows.showDebugWindow",
+        "title": "调试窗口"
+      },
+      {
+        "command": "odin-debugwindows.clear",
+        "title": "清空调试窗口",
+        "icon": "$(clear-all)"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "odin-debugwindows.clear",
+          "when": "view == debugWindow",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "odin-debugwindows.clear",
+          "when": "view == debugWindow",
+          "group": "inline"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "odin-debugwindows.showDebugWindow",
+          "title": "显示调试窗口"
+        },
+        {
+          "command": "odin-debugwindows.clear",
+          "title": "调试窗口: 清空"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "pretest": "npm run compile && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^18.0.0",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^5.45.0",
+    "@typescript-eslint/parser": "^5.45.0",
+    "eslint": "^8.28.0",
+    "typescript": "^4.9.4"
+  }
+}
+
