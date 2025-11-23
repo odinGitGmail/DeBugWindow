@@ -158,7 +158,8 @@ async function main() {
         
         // 执行打包
         console.log('\n开始打包...');
-        execSync('vsce package', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
+        // 使用 Gitee 仓库的 raw 地址作为图片基础 URL
+        execSync('vsce package --baseContentUrl https://gitee.com --baseImagesUrl https://gitee.com/odinsam/debug-window/raw/feature/1.0.0.beta', { stdio: 'inherit', cwd: path.join(__dirname, '..') });
         
         console.log('\n✓ 打包完成！');
         
