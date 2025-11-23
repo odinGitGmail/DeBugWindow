@@ -2,7 +2,7 @@
   "name": "odin-debugwindows",
   "displayName": "odin-DebugWindows",
   "description": "一个开发时候用的调试窗口",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "repository": {
     "type": "git",
     "url": "https://gitee.com/odinsam/debug-window.git"

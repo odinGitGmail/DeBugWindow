@@ -12,6 +12,8 @@ const readline = require('readline');
 
 // 获取 package.json 路径
 const packageJsonPath = path.join(__dirname, '..', 'package.json');
+// 获取 README.md 路径
+const readmePath = path.join(__dirname, '..', 'README.md');
 
 /**
  * 读取 package.json
@@ -26,6 +28,42 @@ function readPackageJson() {
  */
 function writePackageJson(packageJson) {
     fs.writeFileSync(packageJsonPath, JSON.stringify(packageJson, null, 2) + '\n', 'utf8');
+}
+
+/**
+ * 读取 README.md
+ */
+function readReadme() {
+    return fs.readFileSync(readmePath, 'utf8');
+}
+
+/**
+ * 更新 README.md 中的版本徽章
+ * @param {string} oldVersion 旧版本号
+ * @param {string} newVersion 新版本号
+ */
+function updateReadmeVersion(oldVersion, newVersion) {
+    try {
+        let readmeContent = readReadme();
+        
+        // 更新版本徽章（匹配 ![Version](https://img.shields.io/badge/version-X.X.X-blue.svg) 格式）
+        const versionBadgePattern = /!\[Version\]\(https:\/\/img\.shields\.io\/badge\/version-([\d.]+)-blue\.svg\)/;
+        if (versionBadgePattern.test(readmeContent)) {
+            readmeContent = readmeContent.replace(
+                versionBadgePattern,
+                `![Version](https://img.shields.io/badge/version-${newVersion}-blue.svg)`
+            );
+            fs.writeFileSync(readmePath, readmeContent, 'utf8');
+            console.log(`✓ README.md 版本徽章已更新: ${oldVersion} -> ${newVersion}`);
+            return true;
+        } else {
+            console.warn('⚠ 未找到版本徽章，跳过更新');
+            return false;
+        }
+    } catch (error) {
+        console.warn('⚠ 更新 README.md 失败:', error.message);
+        return false;
+    }
 }
 
 /**
@@ -142,9 +180,14 @@ async function main() {
             
             if (confirm.toLowerCase() !== 'n' && confirm.toLowerCase() !== 'no') {
                 // 更新版本
+                const oldVersion = packageJson.version;
                 packageJson.version = newVersion;
                 writePackageJson(packageJson);
-                console.log(`\n✓ 版本已更新为: ${newVersion}\n`);
+                console.log(`\n✓ package.json 版本已更新: ${oldVersion} -> ${newVersion}`);
+                
+                // 更新 README.md 中的版本徽章
+                updateReadmeVersion(oldVersion, newVersion);
+                console.log('');
             } else {
                 console.log('\n已取消版本更新\n');
             }
