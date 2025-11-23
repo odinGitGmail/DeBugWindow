@@ -174,6 +174,33 @@ export function activate(context: vscode.ExtensionContext) {
         }
     }, 500);
 
+    // 监听编译任务开始，自动清空调试窗口
+    const onDidStartTask = vscode.tasks.onDidStartTask((e) => {
+        try {
+            const taskName = e.execution.task.name?.toLowerCase() || '';
+            const taskType = e.execution.task.definition?.type?.toLowerCase() || '';
+            const taskSource = e.execution.task.source || '';
+            
+            // 检查是否是编译任务（通过任务名称、类型或源判断）
+            const isBuildTask = 
+                taskName.includes('build') ||
+                taskName.includes('compile') ||
+                taskName.includes('编译') ||
+                taskName.includes('构建') ||
+                taskType.includes('build') ||
+                taskType.includes('compile') ||
+                taskSource.includes('build') ||
+                taskSource.includes('compile');
+            
+            if (isBuildTask) {
+                debugWindowViewProvider.addMessage('[编译] 检测到编译任务，清空调试窗口');
+                debugWindowViewProvider.clearMessages();
+            }
+        } catch (error: any) {
+            console.warn('处理编译任务事件时出错:', error?.message);
+        }
+    });
+
     // 注册命令
     const clearCommand = vscode.commands.registerCommand('odin-debugwindows.clear', () => {
         debugWindowViewProvider.clearMessages();
@@ -189,6 +216,7 @@ export function activate(context: vscode.ExtensionContext) {
         onDidChangeActiveDebugSession,
         onDidReceiveDebugSessionCustomEvent,
         onDidStartDebugSessionWithCheck,
+        onDidStartTask,
         clearCommand,
         showDebugWindowCommand,
         { dispose: () => clearInterval(statusCheckInterval) }

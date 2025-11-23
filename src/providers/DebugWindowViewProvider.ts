@@ -155,6 +155,7 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
     public clearMessages(): void {
         this._messages = [];
         this._currentTableData = null;
+        this.clearTable(); // 清空表格
         this.updateWebview();
     }
 
@@ -714,9 +715,176 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
                 }
             }
             
+            // 检查是否是 Dictionary 类型（C# Dictionary<TKey, TValue>）
+            const isDictionaryType = response.type?.includes('Dictionary') || false;
+            let dictionaryParsed = false;
+            
+            if (isDictionaryType && response.variablesReference && response.variablesReference > 0) {
+                try {
+                    console.log('检测到 Dictionary 类型，开始解析...');
+                    
+                    // 获取子变量（应该包含 [0] [KeyValuePair], [1] [KeyValuePair] 等）
+                    const variablesResponse = await debugSession.customRequest('variables', {
+                        variablesReference: response.variablesReference
+                    }) as any;
+
+                    console.log('获取到的子变量:', JSON.stringify(variablesResponse, null, 2));
+
+                    if (variablesResponse && variablesResponse.variables) {
+                        // 查找所有 KeyValuePair 元素（格式：[n] [KeyValuePair]）
+                        const keyValuePairs = variablesResponse.variables.filter((v: any) => 
+                            v.name && /^\[\d+\]\s*\[KeyValuePair\]/.test(v.name) && v.variablesReference > 0
+                        );
+
+                        console.log(`找到 ${keyValuePairs.length} 个 KeyValuePair`);
+
+                        if (keyValuePairs.length > 0) {
+                            const dictionaryRows: any[][] = [];
+                            
+                            // 对每个 KeyValuePair，获取其 Key 和 Value
+                            for (const kvp of keyValuePairs) {
+                                try {
+                                    let keyValue: any = null;
+                                    let valueValue: any = null;
+                                    
+                                    // 优先从 value 字符串中解析（格式：{[name, 张三]}）
+                                    if (kvp.value) {
+                                        let valueStr = String(kvp.value);
+                                        console.log(`KeyValuePair ${kvp.name} 的 value:`, valueStr);
+                                        
+                                        // 去掉外层引号（如果有）
+                                        if ((valueStr.startsWith('"') && valueStr.endsWith('"')) ||
+                                            (valueStr.startsWith("'") && valueStr.endsWith("'"))) {
+                                            valueStr = valueStr.slice(1, -1);
+                                        }
+                                        
+                                        // 尝试匹配格式：{[key, value]} 或 {[key,value]}
+                                        // 匹配模式：{[ 开头，然后是 key，逗号，空格（可选），value，]}
+                                        const match = valueStr.match(/\{\[([^,\]]+),\s*([^\]]+)\]/);
+                                        if (match && match.length >= 3) {
+                                            keyValue = match[1].trim();
+                                            valueValue = match[2].trim();
+                                            console.log(`从字符串解析 KeyValuePair ${kvp.name}: Key="${keyValue}", Value="${valueValue}"`);
+                                        } else {
+                                            console.warn(`无法从字符串解析 KeyValuePair ${kvp.name}，valueStr="${valueStr}"`);
+                                        }
+                                    }
+                                    
+                                    // 如果字符串解析失败，尝试通过 variablesReference 获取
+                                    if ((!keyValue || !valueValue) && kvp.variablesReference > 0) {
+                                        try {
+                                            // 获取 KeyValuePair 的属性（Key 和 Value）
+                                            const kvpDetails = await debugSession.customRequest('variables', {
+                                                variablesReference: kvp.variablesReference
+                                            }) as any;
+                                            
+                                            console.log(`KeyValuePair ${kvp.name} 的子变量:`, JSON.stringify(kvpDetails, null, 2));
+                                            
+                                            if (kvpDetails && kvpDetails.variables) {
+                                                // 查找 Key 和 Value 属性
+                                                kvpDetails.variables.forEach((v: any) => {
+                                                    if (v.name === 'Key' || v.name === 'key') {
+                                                        keyValue = v.value || v.result || keyValue;
+                                                    } else if (v.name === 'Value' || v.name === 'value') {
+                                                        valueValue = v.value || v.result || valueValue;
+                                                    }
+                                                });
+                                                
+                                                // 如果 Key 或 Value 有 variablesReference，需要进一步获取
+                                                const keyVar = kvpDetails.variables.find((v: any) => v.name === 'Key' || v.name === 'key');
+                                                const valueVar = kvpDetails.variables.find((v: any) => v.name === 'Value' || v.name === 'value');
+                                                
+                                                if (keyVar && keyVar.variablesReference > 0) {
+                                                    try {
+                                                        const keyDetails = await debugSession.customRequest('variables', {
+                                                            variablesReference: keyVar.variablesReference
+                                                        }) as any;
+                                                        if (keyDetails && keyDetails.variables && keyDetails.variables.length > 0) {
+                                                            // 通常 Key 是简单类型，取第一个变量的值
+                                                            keyValue = keyDetails.variables[0]?.value || keyValue;
+                                                        }
+                                                    } catch (keyError) {
+                                                        console.warn('获取 Key 详情失败:', keyError);
+                                                    }
+                                                }
+                                                
+                                                if (valueVar && valueVar.variablesReference > 0) {
+                                                    try {
+                                                        const valueDetails = await debugSession.customRequest('variables', {
+                                                            variablesReference: valueVar.variablesReference
+                                                        }) as any;
+                                                        if (valueDetails && valueDetails.variables && valueDetails.variables.length > 0) {
+                                                            // 通常 Value 是简单类型，取第一个变量的值
+                                                            valueValue = valueDetails.variables[0]?.value || valueValue;
+                                                        }
+                                                    } catch (valueError) {
+                                                        console.warn('获取 Value 详情失败:', valueError);
+                                                    }
+                                                }
+                                            }
+                                        } catch (varError) {
+                                            console.warn(`通过 variablesReference 获取 KeyValuePair ${kvp.name} 失败:`, varError);
+                                        }
+                                    }
+                                    
+                                    // 清理值（去掉引号等）
+                                    let cleanKey = String(keyValue || '').trim();
+                                    let cleanValue = String(valueValue || '').trim();
+                                    
+                                    // 去掉字符串值两端的引号
+                                    if (cleanKey.startsWith('"') && cleanKey.endsWith('"')) {
+                                        cleanKey = cleanKey.slice(1, -1);
+                                    }
+                                    if (cleanValue.startsWith('"') && cleanValue.endsWith('"')) {
+                                        cleanValue = cleanValue.slice(1, -1);
+                                    }
+                                    
+                                    // 如果 Key 和 Value 都有值，添加到结果中
+                                    if (cleanKey && cleanValue) {
+                                        dictionaryRows.push([cleanKey, cleanValue]);
+                                        console.log(`KeyValuePair ${kvp.name} 解析成功: Key="${cleanKey}", Value="${cleanValue}"`);
+                                    } else {
+                                        console.warn(`KeyValuePair ${kvp.name} 解析失败: Key="${cleanKey}", Value="${cleanValue}"`);
+                                    }
+                                } catch (kvpError) {
+                                    console.warn(`解析 KeyValuePair ${kvp.name} 失败:`, kvpError);
+                                }
+                            }
+                            
+                            if (dictionaryRows.length > 0) {
+                                const tableData: TableData = {
+                                    columns: ['键', '值'],
+                                    rows: dictionaryRows,
+                                    totalRows: dictionaryRows.length
+                                };
+                                
+                                this._currentTableData = tableData;
+                                this.sendTableData(tableData);
+                                
+                                // 格式化类型显示
+                                let displayType = response.type || 'Dictionary';
+                                if (displayType.includes('System.Collections.Generic.')) {
+                                    displayType = displayType.replace('System.Collections.Generic.', '');
+                                }
+                                if (displayType.includes('System.')) {
+                                    displayType = displayType.replace('System.', '');
+                                }
+                                
+                                this.addMessage(`[${timestamp}] 变量 "${variableName}" (类型: ${displayType}) 解析成功 (${tableData.totalRows} 行)`);
+                                dictionaryParsed = true;
+                                return;
+                            }
+                        }
+                    }
+                } catch (dictionaryError: any) {
+                    console.warn('解析 Dictionary 失败:', dictionaryError);
+                    // 继续使用原始响应，让解析器处理
+                }
+            }
+            
             // 检查是否有 variablesReference（C# List 等集合类型可能需要通过此获取子变量）
-            // 注意：DataTable 已经在上面处理过了，这里跳过
-            if (response.variablesReference && response.variablesReference > 0 && !isDataTableType) {
+            // 注意：DataTable 和 Dictionary 已经在上面处理过了，这里跳过
+            if (response.variablesReference && response.variablesReference > 0 && !isDataTableType && !dictionaryParsed) {
                 try {
                     // 获取子变量（对于 List，这可能是元素）
                     const variablesResponse = await debugSession.customRequest('variables', {
@@ -1055,9 +1223,13 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
                 
                 this.addMessage(`[${timestamp}] 变量 "${variableName}" (类型: ${displayType}) 解析成功 (${parseResult.data.totalRows} 行)`);
             } else {
+                // 解析失败时，清空表格，只在消息窗口显示错误
+                this.clearTable();
                 this.addMessage(`[${timestamp}] 错误: ${parseResult.error || '解析失败'}`);
             }
         } catch (error: any) {
+            // 解析失败时，清空表格，只在消息窗口显示错误
+            this.clearTable();
             this.addMessage(`[${timestamp}] 错误: ${error?.message || String(error)}`);
         }
     }
@@ -1243,6 +1415,18 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
             this._view.webview.postMessage({
                 type: 'table',
                 data: tableData
+            });
+        }
+    }
+
+    /**
+     * 清空表格（隐藏表格）
+     */
+    private clearTable(): void {
+        this._currentTableData = null;
+        if (this._view) {
+            this._view.webview.postMessage({
+                type: 'clearTable'
             });
         }
     }
@@ -1631,6 +1815,11 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
                 filteredData = message.data;
                 currentPage = 1;
                 renderTable();
+            } else if (message && message.type === 'clearTable') {
+                tableData = null;
+                filteredData = null;
+                currentPage = 1;
+                renderTable(); // 这会隐藏表格
             } else if (message && message.type === 'suggestions') {
                 currentSuggestions = message.suggestions || [];
                 selectedIndex = -1;
