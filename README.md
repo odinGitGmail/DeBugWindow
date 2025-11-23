@@ -214,7 +214,7 @@ odin-DeBugWindow/
 
 ```
 
-详细的项目结构说明请查看 [项目结构.md](./项目结构.md)
+详细的项目结构说明请查看 [项目结构.md](./doc/项目结构.md)
 
 ### 开发命令
 
@@ -246,7 +246,7 @@ npm run package:simple
 
 ### 扩展解析器
 
-如果你想为其他语言添加解析器支持，请参考 [扩展指南.md](./扩展指南.md)。
+如果你想为其他语言添加解析器支持，请参考 [扩展指南.md](./doc/扩展指南.md)。
 
 基本步骤：
 
@@ -255,7 +255,7 @@ npm run package:simple
 3. 在 `ProjectTypeDetector` 中添加检测逻辑
 4. 在 `DebugWindowViewProvider.getParser()` 中注册解析器
 
-详细说明请查看 [扩展指南.md](./扩展指南.md)。
+详细说明请查看 [扩展指南.md](./doc/扩展指南.md)。
 
 ## 📝 更新日志
 
