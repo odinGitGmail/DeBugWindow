@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-0.0.11-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
 ![VSCode](https://img.shields.io/badge/VSCode-1.74.0+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Author](https://img.shields.io/badge/author-odinsam-orange.svg)](https://www.odinsam.com)
@@ -183,11 +183,11 @@ dict.Add("city", "北京");
 | JSON 字符串              | 自动解析             | `"[{\"id\":1}]"`             |
 | 基本类型                 | int, string, bool 等 | `123`, `"hello"`, `true`     |
 
-> 💡 **提示**：更多类型支持正在开发中，详见 [扩展指南](./doc/扩展指南.md)
+> 💡 **提示**：更多类型支持正在开发中
 
 ## 🛠️ 开发指南
 
-### 项目结构
+### 项目结构 ![项目结构](./doc/ProjectStructure.md)
 
 ```
 odin-DeBugWindow/
@@ -214,7 +214,7 @@ odin-DeBugWindow/
 
 ```
 
-详细的项目结构说明请查看 [项目结构.md](./doc/项目结构.md)
+项目采用模块化、面向对象的设计架构
 
 ### 开发命令
 
@@ -246,7 +246,7 @@ npm run package:simple
 
 ### 扩展解析器
 
-如果你想为其他语言添加解析器支持，请参考 [扩展指南.md](./doc/扩展指南.md)。
+如果你想为其他语言添加解析器支持
 
 基本步骤：
 
@@ -255,7 +255,7 @@ npm run package:simple
 3. 在 `ProjectTypeDetector` 中添加检测逻辑
 4. 在 `DebugWindowViewProvider.getParser()` 中注册解析器
 
-详细说明请查看 [扩展指南.md](./doc/扩展指南.md)。
+详细说明请查看 [扩展指南.md](./doc/ExtendedGuide.md)。
 
 ## 📝 更新日志
 
