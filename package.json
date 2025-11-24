@@ -2,19 +2,21 @@
   "name": "odin-debugwindows",
   "displayName": "odin-DebugWindows",
   "description": "一个开发时候用的调试窗口",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": {
     "type": "git",
     "url": "https://gitee.com/odinsam/debug-window.git"
   },
   "publisher": "odinsam",
-    "keywords": ["debug"],
-    "author": "odinsam",
-    "license": "ISC",
-    "bugs": {
-        "url": "https://gitee.com/odinsam/debug-window/issues"
-    },
-    "homepage": "https://gitee.com/odinsam/debug-window#readme",
+  "keywords": [
+    "debug"
+  ],
+  "author": "odinsam",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://gitee.com/odinsam/debug-window/issues"
+  },
+  "homepage": "https://gitee.com/odinsam/debug-window#readme",
   "engines": {
     "vscode": "^1.74.0"
   },
