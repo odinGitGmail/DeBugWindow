@@ -60,6 +60,9 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
                     case 'requestSuggestions':
                         await this.handleRequestSuggestions(data.query);
                         break;
+                    case 'openFile':
+                        await this.handleOpenFile(data.filePath, data.line);
+                        break;
                 }
             } catch (error: any) {
                 console.error('处理消息时出错:', error);
@@ -1049,6 +1052,252 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
                 return;
             }
             
+            // 检查是否是 Exception 类型
+            const isExceptionType = response.type && (
+                response.type.includes('Exception') || 
+                response.type.includes('System.Exception')
+            );
+            
+            if (isExceptionType && response.variablesReference && response.variablesReference > 0) {
+                try {
+                    // 清空表格，Exception 不需要表格显示
+                    this.clearTable();
+                    
+                    // 获取 Exception 的子变量
+                    const variablesResponse = await debugSession.customRequest('variables', {
+                        variablesReference: response.variablesReference
+                    }) as any;
+                    
+                    console.log('获取到的子变量:', JSON.stringify(variablesResponse, null, 2));
+                    
+                    if (variablesResponse && variablesResponse.variables) {
+                        // 提取关键信息
+                        let exceptionType = response.type || 'Exception';
+                        let message = '';
+                        let stackTrace = '';
+                        let source = '';
+                        let innerException = '';
+                        let hResult = '';
+                        let data: { [key: string]: string } = {};
+                        
+                        // 从 result 中提取异常类型（如果包含）
+                        const resultStr = response.result || '';
+                        if (resultStr.includes(':')) {
+                            const typeMatch = resultStr.match(/^\{?([^:]+):/);
+                            if (typeMatch) {
+                                exceptionType = typeMatch[1].trim();
+                            }
+                        }
+                        
+                        // 遍历子变量提取信息
+                        for (const variable of variablesResponse.variables) {
+                            const varName = variable.name || '';
+                            const varValue = variable.value || '';
+                            
+                            // 提取 Message
+                            if (varName.includes('Message') && varName.includes('[string]')) {
+                                message = varValue;
+                                // 去掉引号
+                                if (message.startsWith('"') && message.endsWith('"')) {
+                                    message = message.slice(1, -1);
+                                }
+                            }
+                            
+                            // 提取 StackTrace
+                            if (varName.includes('StackTrace') && varName.includes('[string]')) {
+                                stackTrace = varValue;
+                                // 去掉引号
+                                if (stackTrace.startsWith('"') && stackTrace.endsWith('"')) {
+                                    stackTrace = stackTrace.slice(1, -1);
+                                }
+                            }
+                            
+                            // 提取 Source
+                            if (varName.includes('Source') && varName.includes('[string]')) {
+                                source = varValue;
+                                // 去掉引号
+                                if (source.startsWith('"') && source.endsWith('"')) {
+                                    source = source.slice(1, -1);
+                                }
+                            }
+                            
+                            // 提取 HResult
+                            if (varName.includes('HResult')) {
+                                hResult = varValue;
+                            }
+                            
+                            // 提取 InnerException（如果有）
+                            if (varName.includes('InnerException') && varValue !== 'null' && variable.variablesReference > 0) {
+                                try {
+                                    const innerVarResponse = await debugSession.customRequest('variables', {
+                                        variablesReference: variable.variablesReference
+                                    }) as any;
+                                    
+                                    if (innerVarResponse && innerVarResponse.variables) {
+                                        const innerMessageVar = innerVarResponse.variables.find((v: any) => 
+                                            v.name && v.name.includes('Message') && v.name.includes('[string]')
+                                        );
+                                        if (innerMessageVar) {
+                                            let innerMsg = innerMessageVar.value || '';
+                                            if (innerMsg.startsWith('"') && innerMsg.endsWith('"')) {
+                                                innerMsg = innerMsg.slice(1, -1);
+                                            }
+                                            innerException = innerMsg;
+                                        }
+                                    }
+                                } catch (innerError) {
+                                    console.warn('获取 InnerException 失败:', innerError);
+                                }
+                            }
+                            
+                            // 提取 Data 字典（如果有）
+                            if (varName.includes('Data') && varName.includes('IDictionary') && variable.variablesReference > 0) {
+                                try {
+                                    const dataVarResponse = await debugSession.customRequest('variables', {
+                                        variablesReference: variable.variablesReference
+                                    }) as any;
+                                    
+                                    if (dataVarResponse && dataVarResponse.variables) {
+                                        // 查找结果视图或直接查找键值对
+                                        const resultsView = dataVarResponse.variables.find((v: any) => 
+                                            v.name === '结果视图' || v.name === 'Results View'
+                                        );
+                                        
+                                        let dataItems: any[] = [];
+                                        if (resultsView && resultsView.variablesReference > 0) {
+                                            const resultsViewResponse = await debugSession.customRequest('variables', {
+                                                variablesReference: resultsView.variablesReference
+                                            }) as any;
+                                            if (resultsViewResponse && resultsViewResponse.variables) {
+                                                dataItems = resultsViewResponse.variables.filter((v: any) => 
+                                                    v.name && /^\[\d+\]$/.test(v.name)
+                                                );
+                                            }
+                                        } else {
+                                            dataItems = dataVarResponse.variables.filter((v: any) => 
+                                                v.name && /^\[\d+\]$/.test(v.name)
+                                            );
+                                        }
+                                        
+                                        // 提取键值对
+                                        for (const item of dataItems) {
+                                            if (item.variablesReference > 0) {
+                                                try {
+                                                    const itemResponse = await debugSession.customRequest('variables', {
+                                                        variablesReference: item.variablesReference
+                                                    }) as any;
+                                                    
+                                                    if (itemResponse && itemResponse.variables) {
+                                                        const keyVar = itemResponse.variables.find((v: any) => 
+                                                            v.name && (v.name.includes('Key') || v.name.includes('key'))
+                                                        );
+                                                        const valueVar = itemResponse.variables.find((v: any) => 
+                                                            v.name && (v.name.includes('Value') || v.name.includes('value'))
+                                                        );
+                                                        
+                                                        if (keyVar && valueVar) {
+                                                            let key = keyVar.value || '';
+                                                            let value = valueVar.value || '';
+                                                            if (key.startsWith('"') && key.endsWith('"')) {
+                                                                key = key.slice(1, -1);
+                                                            }
+                                                            if (value.startsWith('"') && value.endsWith('"')) {
+                                                                value = value.slice(1, -1);
+                                                            }
+                                                            data[key] = value;
+                                                        }
+                                                    }
+                                                } catch (itemError) {
+                                                    console.warn(`获取 Data 项 ${item.name} 失败:`, itemError);
+                                                }
+                                            }
+                                        }
+                                    }
+                                } catch (dataError) {
+                                    console.warn('获取 Exception Data 失败:', dataError);
+                                }
+                            }
+                        }
+                        
+                        // 如果 message 为空，尝试从 result 中提取
+                        if (!message && resultStr) {
+                            const messageMatch = resultStr.match(/:\s*([^\n]+)/);
+                            if (messageMatch) {
+                                message = messageMatch[1].trim();
+                            }
+                        }
+                        
+                        // 如果 stackTrace 为空，尝试从 result 中提取
+                        if (!stackTrace && resultStr.includes('at ')) {
+                            const stackMatch = resultStr.match(/at\s+([^\n]+(?:\n\s+at\s+[^\n]+)*)/);
+                            if (stackMatch) {
+                                stackTrace = stackMatch[1].trim();
+                            } else {
+                                // 如果没匹配到，尝试提取整个堆栈部分
+                                const atIndex = resultStr.indexOf('at ');
+                                if (atIndex > 0) {
+                                    stackTrace = resultStr.substring(atIndex).trim();
+                                    // 去掉末尾的 }
+                                    if (stackTrace.endsWith('}')) {
+                                        stackTrace = stackTrace.slice(0, -1).trim();
+                                    }
+                                }
+                            }
+                        }
+                        
+                        // 格式化异常信息并显示
+                        let exceptionInfo = `[${timestamp}] ⚠️ 异常信息: ${exceptionType}\n`;
+                        
+                        if (message) {
+                            exceptionInfo += `   消息: ${message}\n`;
+                        }
+                        
+                        if (source) {
+                            exceptionInfo += `   来源: ${source}\n`;
+                        }
+                        
+                        if (hResult) {
+                            exceptionInfo += `   HResult: ${hResult}\n`;
+                        }
+                        
+                        if (Object.keys(data).length > 0) {
+                            exceptionInfo += `   数据:\n`;
+                            for (const [key, value] of Object.entries(data)) {
+                                exceptionInfo += `     ${key} = ${value}\n`;
+                            }
+                        }
+                        
+                        if (stackTrace) {
+                            exceptionInfo += `   堆栈跟踪:\n`;
+                            // 格式化堆栈跟踪，每行添加缩进，并转换为可点击链接
+                            const stackLines = stackTrace.split('\n');
+                            for (const line of stackLines) {
+                                const trimmedLine = line.trim();
+                                // 解析文件路径和行号，转换为 HTML 链接
+                                const processedLine = this.parseStackTraceLine(trimmedLine);
+                                exceptionInfo += `     ${processedLine}\n`;
+                            }
+                        }
+                        
+                        if (innerException) {
+                            exceptionInfo += `   内部异常: ${innerException}\n`;
+                        }
+                        
+                        // 显示异常信息
+                        this.addMessage(exceptionInfo);
+                        return;
+                    }
+                } catch (exceptionError: any) {
+                    console.error('解析 Exception 失败:', exceptionError);
+                    // 如果解析失败，至少显示基本信息
+                    this.clearTable();
+                    const exceptionType = response.type || 'Exception';
+                    const resultStr = response.result || '';
+                    this.addMessage(`[${timestamp}] ⚠️ 异常: ${exceptionType}\n    ${resultStr}`);
+                    return;
+                }
+            }
+            
             // 处理字符串类型的值（可能是多重转义的 JSON）
             let valueToParse = response.result || response.value;
             const originalValue = valueToParse;
@@ -1382,6 +1631,90 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
     }
 
     /**
+     * 解析堆栈跟踪行，将文件路径转换为可点击链接
+     * @param line 堆栈跟踪行
+     * @returns 处理后的行（包含 HTML 链接）
+     */
+    private parseStackTraceLine(line: string): string {
+        // 匹配中文格式：在 /path/to/file.cs 中: 第 6 行
+        // 格式：在 [任意内容] 在 /path/to/file.cs 中: 第 6 行
+        let result = line;
+        
+        // 匹配模式：/path/to/file.cs 中: 第 6 行
+        const chinesePattern = /([\/\\][^\s]+)(\s+中:\s+第\s+)(\d+)(\s+行)/g;
+        result = result.replace(chinesePattern, (match, filePath, middle, lineNumber) => {
+            // 验证文件路径是否有效
+            if (filePath.includes('.') && (filePath.match(/\.\w+$/) || filePath.length > 15)) {
+                // 转义 HTML 特殊字符
+                const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedMiddle = middle.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<span class="stack-trace-link" data-file="${escapedPath}" data-line="${lineNumber}">${escapedPath}${escapedMiddle}${lineNumber} 行</span>`;
+            }
+            return match;
+        });
+        
+        // 匹配简化格式：/path/to/file.cs:6
+        if (!result.includes('stack-trace-link')) {
+            const simplePattern = /([\/\\][^\s:]+):(\d+)/g;
+            result = result.replace(simplePattern, (match, filePath, lineNumber) => {
+                if (filePath.includes('.') && (filePath.match(/\.\w+$/) || filePath.length > 15)) {
+                    const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                    return `<span class="stack-trace-link" data-file="${escapedPath}" data-line="${lineNumber}">${escapedPath}:${lineNumber}</span>`;
+                }
+                return match;
+            });
+        }
+        
+        // 匹配英文格式：in /path/to/file.cs:line 6
+        if (!result.includes('stack-trace-link')) {
+            const englishPattern = /(in\s+)([\/\\][^\s:]+):(line\s+)(\d+)/g;
+            result = result.replace(englishPattern, (match, prefix, filePath, lineLabel, lineNumber) => {
+                const escapedPrefix = prefix.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedLabel = lineLabel.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<span class="stack-trace-link" data-file="${escapedPath}" data-line="${lineNumber}">${escapedPrefix}${escapedPath}:${escapedLabel}${lineNumber}</span>`;
+            });
+        }
+        
+        // 匹配英文简化格式：in /path/to/file.cs:6
+        if (!result.includes('stack-trace-link')) {
+            const englishSimplePattern = /(in\s+)([\/\\][^\s:]+):(\d+)/g;
+            result = result.replace(englishSimplePattern, (match, prefix, filePath, lineNumber) => {
+                const escapedPrefix = prefix.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const escapedPath = filePath.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                return `<span class="stack-trace-link" data-file="${escapedPath}" data-line="${lineNumber}">${escapedPrefix}${escapedPath}:${lineNumber}</span>`;
+            });
+        }
+        
+        return result;
+    }
+
+    /**
+     * 处理打开文件请求
+     * @param filePath 文件路径
+     * @param line 行号
+     */
+    private async handleOpenFile(filePath: string, line: number): Promise<void> {
+        try {
+            // 将文件路径转换为 URI
+            const fileUri = vscode.Uri.file(filePath);
+            
+            // 打开文件并定位到指定行
+            const document = await vscode.workspace.openTextDocument(fileUri);
+            const editor = await vscode.window.showTextDocument(document);
+            
+            // 定位到指定行（行号从 1 开始，但编辑器索引从 0 开始）
+            const position = new vscode.Position(Math.max(0, line - 1), 0);
+            editor.selection = new vscode.Selection(position, position);
+            editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+        } catch (error: any) {
+            console.error('打开文件失败:', error);
+            const timestamp = new Date().toLocaleTimeString('zh-CN');
+            this.addMessage(`[${timestamp}] 错误: 无法打开文件 ${filePath}: ${error?.message || String(error)}`);
+        }
+    }
+
+    /**
      * 获取变量解析器
      * @returns 变量解析器
      */
@@ -1493,6 +1826,17 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
         }
         .output-line:empty {
             display: none;
+        }
+        .stack-trace-link {
+            color: var(--vscode-textLink-foreground) !important;
+            text-decoration: underline !important;
+            cursor: pointer !important;
+            user-select: none;
+            display: inline;
+        }
+        .stack-trace-link:hover {
+            color: var(--vscode-textLink-activeForeground) !important;
+            text-decoration: underline !important;
         }
         .table-container {
             margin-top: 10px;
@@ -1842,13 +2186,103 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
             }
         }
 
+        // 解析堆栈跟踪并转换为可点击链接
+        function parseStackTrace(text) {
+            // 匹配文件路径和行号
+            // 格式1: in /path/to/file.cs:line 6
+            // 格式2: 在 /path/to/file.cs 中: 第 6 行 (注意：可能前面有其他"在"，需要精确匹配文件路径)
+            // 格式3: at method in /path/to/file.cs:line 6
+            // 格式4: 在 method 在 /path/to/file.cs 中: 第 6 行
+            
+            let result = escapeHtml(text);
+            
+            // 先处理中文格式：匹配 "在 [文件路径] 中: 第 [行号] 行"
+            // 直接匹配文件路径模式，不依赖前面的"在"，因为可能有多个"在"
+            // 匹配模式：/path/to/file.cs 中: 第 6 行
+            // 注意：文件路径可能包含多个路径段，使用 [^\s]+ 会匹配到空格之前的所有内容
+            result = result.replace(/([\/\\][^\s]+)(\s+中:\s+第\s+)(\d+)(\s+行)/g, (match, filePath, middle, lineNumber, suffix) => {
+                // 验证文件路径是否有效（包含文件扩展名或看起来像完整路径）
+                // 文件路径应该包含至少一个点（文件扩展名）或者长度足够长
+                if (filePath.includes('.') && (filePath.match(/\.\w+$/) || filePath.length > 15)) {
+                    console.log('匹配到中文格式文件路径:', filePath, '行号:', lineNumber);
+                    const link = \`<span class="stack-trace-link" data-file="\${filePath}" data-line="\${lineNumber}">\${filePath}\${middle}\${lineNumber}\${suffix}</span>\`;
+                    return link;
+                }
+                return match;
+            });
+            
+            // 处理中文简化格式：/path/to/file.cs:6（前面可能有"在"）
+            // 注意：这个模式要放在中文完整格式之后，避免重复匹配
+            // 但要排除已经包含 stack-trace-link 的情况
+            if (!result.includes('stack-trace-link')) {
+                result = result.replace(/([\/\\][^\s:]+):(\d+)/g, (match, filePath, lineNumber) => {
+                    // 检查是否已经被处理过（避免重复处理）
+                    if (match.includes('stack-trace-link')) {
+                        return match;
+                    }
+                    // 验证文件路径是否有效
+                    if (filePath.includes('.') && (filePath.match(/\.\w+$/) || filePath.length > 15)) {
+                        console.log('匹配到中文简化格式文件路径:', filePath, '行号:', lineNumber);
+                        const link = \`<span class="stack-trace-link" data-file="\${filePath}" data-line="\${lineNumber}">\${filePath}:\${lineNumber}</span>\`;
+                        return link;
+                    }
+                    return match;
+                });
+            }
+            
+            // 处理英文格式: in /path/to/file.cs:line 6
+            result = result.replace(/(in\s+)([\/\\][^\s:]+):(line\s+)(\d+)/g, (match, prefix, filePath, lineLabel, lineNumber) => {
+                // 检查是否已经被处理过
+                if (match.includes('stack-trace-link')) {
+                    return match;
+                }
+                console.log('匹配到英文格式文件路径:', filePath, '行号:', lineNumber);
+                const link = \`<span class="stack-trace-link" data-file="\${filePath}" data-line="\${lineNumber}">\${prefix}\${filePath}:\${lineLabel}\${lineNumber}</span>\`;
+                return link;
+            });
+            
+            // 处理英文简化格式: in /path/to/file.cs:6
+            result = result.replace(/(in\s+)([\/\\][^\s:]+):(\d+)/g, (match, prefix, filePath, lineNumber) => {
+                // 检查是否已经被处理过
+                if (match.includes('stack-trace-link')) {
+                    return match;
+                }
+                console.log('匹配到英文简化格式文件路径:', filePath, '行号:', lineNumber);
+                const link = \`<span class="stack-trace-link" data-file="\${filePath}" data-line="\${lineNumber}">\${prefix}\${filePath}:\${lineNumber}</span>\`;
+                return link;
+            });
+            
+            return result;
+        }
+
         // 更新输出显示
         function updateOutput() {
             outputContainer.innerHTML = '';
             messages.forEach(msg => {
                 const line = document.createElement('div');
                 line.className = 'output-line';
-                line.textContent = msg;
+                // 直接使用 innerHTML，因为消息中可能已经包含 HTML 链接（从 TypeScript 端生成）
+                line.innerHTML = msg;
+                
+                // 为所有堆栈跟踪链接添加点击事件（使用事件委托）
+                const links = line.querySelectorAll('.stack-trace-link');
+                links.forEach(link => {
+                    link.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        const filePath = link.getAttribute('data-file');
+                        const lineNumber = parseInt(link.getAttribute('data-line') || '1');
+                        
+                        if (filePath) {
+                            vscode.postMessage({
+                                type: 'openFile',
+                                filePath: filePath,
+                                line: lineNumber
+                            });
+                        }
+                    });
+                });
+                
                 outputContainer.appendChild(line);
             });
             outputContainer.scrollTop = outputContainer.scrollHeight;
