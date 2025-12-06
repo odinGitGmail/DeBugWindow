@@ -218,6 +218,68 @@ After parsing, it will display:
 - Inner Exception: (if any)
 - Data: (Key-value pairs from Exception.Data)
 
+## ⚠️ Known Limitations
+
+### Variable Access Limitation in ASP.NET Core WebAPI Projects
+
+When handling HTTP requests in **ASP.NET Core WebAPI** projects, the extension may be unable to retrieve variable values due to debugger limitations.
+
+#### 📌 Root Cause
+
+When ASP.NET Core processes HTTP requests:
+- Requests are handled in **Kestrel server's thread pool**
+- Involves **HTTP Context** (HttpContext) and middleware pipeline
+- C# debugger's Debug Adapter Protocol (DAP) cannot properly enumerate variables in this environment
+
+#### ✅ Verified Environments
+
+Through comprehensive testing, the following environments are **NOT affected**:
+- ✅ Console Applications - Works perfectly
+- ✅ WebAPI startup code - Works perfectly (not in HTTP request processing)
+- ✅ Other types of .NET projects
+
+**Only affected during WebAPI HTTP request processing**, and has nothing to do with:
+- ❌ Code optimization (Debug/Release mode)
+- ❌ IoC containers (Autofac, built-in DI, etc.)
+- ❌ AOP dynamic proxies
+- ❌ Async/sync methods
+- ❌ Project configuration
+
+#### 💡 Solutions
+
+When encountering this issue in WebAPI projects, please use these alternatives:
+
+1. **Use VSCode Debug Console** (Recommended)
+   - Shortcut: `Ctrl+Shift+Y` (Windows/Linux) or `Cmd+Shift+Y` (Mac)
+   - Type variable name directly in the "DEBUG CONSOLE" panel at the bottom
+   - **Debug Console is NOT affected by this limitation and can display variables normally**
+
+2. **Use VSCode Variables Panel**
+   - View the "VARIABLES" panel in the left debug view
+   - Expand to view all variables in scope
+
+3. **Add Logging**
+   - Use `Console.WriteLine()` or `ILogger` to output variable values in code
+   - View in debug output or console
+
+#### 📝 Example
+
+```csharp
+// In WebAPI Controller or Service
+catch (Exception ex)
+{
+    // ❌ Typing "ex" in debug window may not work
+    
+    // ✅ Solution 1: Type "ex" in Debug Console
+    // ✅ Solution 2: Check left VARIABLES panel
+    // ✅ Solution 3: Add logging
+    Console.WriteLine($"Exception: {ex.Message}");
+    throw;
+}
+```
+
+This is a known limitation of ASP.NET Core HTTP request processing pipeline, not an issue with the extension. If you encounter similar issues in other environments, please [submit an issue](https://gitee.com/odinsam/debug-window/issues).
+
 ## 🛠️ Development Guide
 
 ### Project Structure

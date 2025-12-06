@@ -228,130 +228,125 @@ export class DebugWindowViewProvider implements vscode.WebviewViewProvider {
         try {
             // 获取当前堆栈帧（对于 C# 等语言，需要指定 frameId）
             let frameId: number | undefined = undefined;
+            let threadId: number | undefined = undefined;
             
             try {
-                // 尝试获取线程和堆栈帧
-                const threadsResponse = await debugSession.customRequest('threads', {}) as any;
-                if (threadsResponse && threadsResponse.threads && threadsResponse.threads.length > 0) {
-                    const thread = threadsResponse.threads[0];
-                    const stackTrace = await debugSession.customRequest('stackTrace', {
-                        threadId: thread.id
-                    }) as any;
-                    
-                    if (stackTrace && stackTrace.stackFrames && stackTrace.stackFrames.length > 0) {
-                        // 使用第一个堆栈帧（当前暂停的帧）
-                        frameId = stackTrace.stackFrames[0].id;
+                // 使用 VSCode API 获取当前活动的堆栈项
+                const activeStackItem = vscode.debug.activeStackItem;
+                
+                if (activeStackItem) {
+                    const stackItemAny = activeStackItem as any;
+                    if (stackItemAny.threadId !== undefined && stackItemAny.frameId !== undefined) {
+                        threadId = stackItemAny.threadId;
+                        frameId = stackItemAny.frameId;
+                    }
+                }
+                
+                // 如果 activeStackItem 无法使用，尝试备用方案
+                if (frameId === undefined) {
+                    const threadsResponse = await debugSession.customRequest('threads', {}) as any;
+                    if (threadsResponse && threadsResponse.threads && threadsResponse.threads.length > 0) {
+                        // 尝试找到已停止的线程
+                        const stoppedThread = threadsResponse.threads.find((t: any) => 
+                            t.name && (t.name.includes('stopped') || t.name.includes('Stopped'))
+                        );
+                        const thread = stoppedThread || threadsResponse.threads[0];
+                        threadId = thread.id;
+                        
+                        const stackTrace = await debugSession.customRequest('stackTrace', {
+                            threadId: threadId
+                        }) as any;
+                        
+                        if (stackTrace && stackTrace.stackFrames && stackTrace.stackFrames.length > 0) {
+                            frameId = stackTrace.stackFrames[0].id;
+                        }
                     }
                 }
             } catch (frameError) {
-                // 如果无法获取堆栈帧，继续尝试不使用 frameId
-                console.warn('获取堆栈帧失败:', frameError);
+                // 忽略错误，继续尝试不使用 frameId
             }
 
-            // 尝试多种方式获取变量值
+            // 使用和调试控制台相同的方法：scopes + variables
             let response: any = null;
             let lastError: any = null;
 
-            // 方法1: 使用 frameId 和 watch 上下文（适用于 C#）
             if (frameId !== undefined) {
                 try {
-                    response = await debugSession.customRequest('evaluate', {
-                        expression: variableName,
-                        context: 'watch',
-                        frameId: frameId
-                    }) as any;
-                } catch (error: any) {
-                    lastError = error;
-                }
-            }
-
-            // 方法2: 使用 frameId 和 repl 上下文
-            if (!response && frameId !== undefined) {
-                try {
-                    response = await debugSession.customRequest('evaluate', {
-                        expression: variableName,
-                        context: 'repl',
-                        frameId: frameId
-                    }) as any;
-                } catch (error: any) {
-                    lastError = error;
-                }
-            }
-
-            // 方法3: 尝试使用 variables 请求（如果变量在作用域中）
-            if (!response && frameId !== undefined) {
-                try {
-                    // 获取作用域中的变量
+                    // 方法1: 使用 scopes + variables（与调试控制台相同的方法）
                     const scopesResponse = await debugSession.customRequest('scopes', {
                         frameId: frameId
                     }) as any;
                     
-                    if (scopesResponse && scopesResponse.scopes) {
+                    if (scopesResponse && scopesResponse.scopes && scopesResponse.scopes.length > 0) {
                         // 遍历所有作用域查找变量
                         for (const scope of scopesResponse.scopes) {
-                            try {
+                            if (scope.variablesReference > 0) {
                                 const variablesResponse = await debugSession.customRequest('variables', {
                                     variablesReference: scope.variablesReference
                                 }) as any;
                                 
                                 if (variablesResponse && variablesResponse.variables) {
-                                    const variable = variablesResponse.variables.find((v: any) => 
-                                        v.name === variableName
-                                    );
+                                    // 查找匹配的变量（变量名可能是 "ex [Exception]" 格式）
+                                    const matchedVar = variablesResponse.variables.find((v: any) => {
+                                        const varName = v.name || '';
+                                        const cleanName = varName.split('[')[0].trim();
+                                        return cleanName === variableName || v.evaluateName === variableName;
+                                    });
                                     
-                                    if (variable) {
-                                        // 找到变量，使用其值
+                                    if (matchedVar) {
+                                        // 构造响应格式
                                         response = {
-                                            result: variable.value,
-                                            type: variable.type
+                                            result: matchedVar.value,
+                                            type: matchedVar.type,
+                                            variablesReference: matchedVar.variablesReference || 0
                                         };
                                         break;
                                     }
                                 }
-                            } catch (scopeError) {
-                                // 继续查找下一个作用域
                             }
                         }
+                        
+                        if (!response) {
+                            throw new Error(`在作用域中未找到变量: ${variableName}`);
+                        }
+                    } else {
+                        throw new Error('未找到任何作用域');
                     }
-                } catch (error: any) {
-                    lastError = error;
+                } catch (e1: any) {
+                    lastError = e1;
+                    
+                    // 方法2: 回退到 evaluate 方法
+                    try {
+                        response = await debugSession.customRequest('evaluate', {
+                            expression: variableName,
+                            frameId: frameId
+                        }) as any;
+                        
+                        if (!response || (response.result === undefined && response.variablesReference === 0)) {
+                            throw new Error('响应为空');
+                        }
+                    } catch (e2: any) {
+                        lastError = e2;
+                    }
                 }
-            }
-
-            // 方法4: 最后尝试不使用 frameId（适用于某些调试适配器）
-            if (!response) {
-                try {
-                    response = await debugSession.customRequest('evaluate', {
-                        expression: variableName,
-                        context: 'repl'
-                    }) as any;
-                } catch (error: any) {
-                    lastError = error;
-                }
-            }
-
-            if (!response) {
-                const errorMsg = lastError?.message || '无法获取变量值';
-                this.addMessage(`[${timestamp}] 错误: ${errorMsg}`);
-                if (errorMsg.includes('全局范围') || errorMsg.includes('global scope')) {
-                    this.addMessage(`[${timestamp}] 提示: 请确保变量在当前作用域中，或尝试使用完整路径（如 this.users）`);
-                }
+            } else {
+                this.addMessage(`[${timestamp}] 错误: 无法获取堆栈帧信息`);
                 return;
             }
 
-            // 调试日志
-            console.log('获取到的响应:', JSON.stringify(response, null, 2));
+            // 检查是否成功获取到变量
+            if (!response) {
+                const errorMsg = lastError?.message || '无法获取变量值';
+                this.addMessage(`[${timestamp}] ❌ 错误: ${errorMsg}`);
+                this.addMessage(`[${timestamp}] 提示: 请确认变量名拼写正确，且在当前作用域中存在`);
+                return;
+            }
 
-            // 检查是否是 DataTable 类型（需要先检查，因为 DataTable 可能有 variablesReference）
+            // 检查是否是 DataTable 类型
             const isDataTableType = response.type && (
                 response.type.includes('DataTable') || 
                 response.type.includes('System.Data.DataTable')
             );
-            
-            // 调试日志：检查 DataTable 类型
-            if (isDataTableType) {
-                console.log('检测到 DataTable 类型:', response.type);
-            }
             
             if (isDataTableType && response.variablesReference && response.variablesReference > 0) {
                 try {

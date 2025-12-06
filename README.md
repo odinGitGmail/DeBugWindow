@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.1-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.2-blue.svg)
 ![VSCode](https://img.shields.io/badge/VSCode-1.74.0+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Author](https://img.shields.io/badge/author-odinsam-orange.svg)](https://www.odinsam.com)
@@ -215,6 +215,68 @@ try {
 - 堆栈跟踪: （文件路径可点击，直接跳转到代码位置）
 - 内部异常: （如果有）
 - 数据: （Exception.Data 中的键值对）
+
+## ⚠️ 已知限制
+
+### ASP.NET Core WebAPI 项目中的变量访问限制
+
+在 **ASP.NET Core WebAPI** 项目中处理 HTTP 请求时，由于调试器的限制，可能无法通过插件获取变量值。
+
+#### 📌 问题原因
+
+当 ASP.NET Core 处理 HTTP 请求时：
+- 请求在 **Kestrel 服务器的工作线程池**中处理
+- 涉及 **HTTP 上下文**（HttpContext）和中间件管道
+- C# 调试器的 Debug Adapter Protocol (DAP) 在此环境下无法正确枚举变量
+
+#### ✅ 已验证的环境
+
+经过全面测试，以下环境**不受影响**：
+- ✅ Console 应用程序 - 完全正常
+- ✅ WebAPI 项目启动时的代码 - 完全正常（不在 HTTP 请求处理中）
+- ✅ 其他类型的 .NET 项目
+
+**仅在 WebAPI 的 HTTP 请求处理过程中受影响**，与以下因素**无关**：
+- ❌ 代码优化（Debug/Release 模式）
+- ❌ IoC 容器（Autofac、内置 DI 等）
+- ❌ AOP 动态代理
+- ❌ 异步/同步方法
+- ❌ 项目配置
+
+#### 💡 解决方案
+
+当在 WebAPI 项目中遇到此问题时，请使用以下替代方案：
+
+1. **使用 VSCode 的调试控制台**（推荐）
+   - 快捷键：`Ctrl+Shift+Y` (Windows/Linux) 或 `Cmd+Shift+Y` (Mac)
+   - 在底部的 "DEBUG CONSOLE" 面板中直接输入变量名
+   - **调试控制台不受此限制影响，可以正常显示变量**
+
+2. **使用 VSCode 的变量面板**
+   - 在左侧调试视图中查看 "VARIABLES" 面板
+   - 可以展开查看所有作用域中的变量
+
+3. **添加日志输出**
+   - 在代码中使用 `Console.WriteLine()` 或 `ILogger` 输出变量值
+   - 在调试输出或控制台中查看
+
+#### 📝 示例
+
+```csharp
+// 在 WebAPI Controller 或 Service 中
+catch (Exception ex)
+{
+    // ❌ 在调试窗口输入 "ex" 可能无法获取
+    
+    // ✅ 方案1: 使用调试控制台输入 "ex"
+    // ✅ 方案2: 查看左侧 VARIABLES 面板
+    // ✅ 方案3: 添加日志
+    Console.WriteLine($"Exception: {ex.Message}");
+    throw;
+}
+```
+
+这是 ASP.NET Core HTTP 请求处理管道的已知限制，不是插件的问题。如果您在其他环境中遇到类似问题，请[提交 Issue](https://gitee.com/odinsam/debug-window/issues)。
 
 ## 🛠️ 开发指南
 
