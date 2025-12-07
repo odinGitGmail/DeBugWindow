@@ -139,8 +139,16 @@ odinsam-DeBugWindow/
 - DataTable
 - List<T>
 - Dictionary<TKey, TValue>
+- Exception（异常对象）
 - 对象
 - 基本类型
+
+### Exception 解析功能
+
+- 支持解析 C# Exception 对象
+- 显示异常类型、消息、来源、HResult
+- 显示堆栈跟踪（文件路径可点击，直接跳转到代码位置）
+- 支持内部异常和异常数据字典
 
 ## 架构设计
 

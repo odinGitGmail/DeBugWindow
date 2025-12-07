@@ -31,6 +31,18 @@
       "env": {
         "NODE_OPTIONS": "--no-deprecation --no-warnings"
       }
+    },
+    {
+        "name": "Run npm script",
+        "type": "node",
+        "request": "launch",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+            "run-script",
+            "package:publish"  // 这里替换为你的 npm script 名称
+        ],
+        "console": "integratedTerminal",
+        "internalConsoleOptions": "neverOpen"
     }
   ]
 }

@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![Version](https://img.shields.io/badge/version-1.0.4-blue.svg)
 ![VSCode](https://img.shields.io/badge/VSCode-1.74.0+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 [![Author](https://img.shields.io/badge/author-odinsam-orange.svg)](https://www.odinsam.com)
@@ -27,6 +27,8 @@
 - 📤 **数据导出** - 支持导出为 CSV 和 Excel 格式
 - 🌍 **多语言支持** - 支持 C#、JavaScript、TypeScript、Vue 等项目
 - 🔄 **自动清理** - 编译时自动清空调试窗口内容
+- ⚠️ **异常解析** - 支持 C# Exception 类型解析，显示异常详细信息
+- 🔗 **堆栈跟踪链接** - 堆栈跟踪中的文件路径可点击，直接定位到代码位置
 - 🎨 **现代化 UI** - 简洁美观的用户界面
 
 ## 🚀 功能特性
@@ -37,6 +39,7 @@
 - ✅ 自动识别变量类型并选择合适的解析器
 - ✅ 支持复杂数据结构（嵌套对象、数组等）
 - ✅ 智能处理 JSON 字符串（包括多重转义）
+- ✅ **异常解析** - 支持 C# Exception 类型，显示异常类型、消息、堆栈跟踪等信息
 
 ### 2. 表格显示
 
@@ -57,6 +60,14 @@
 - ✅ 自动检测项目类型（C#、JavaScript、TypeScript、Vue、Python、Java、Go、Rust 等）
 - ✅ 根据项目类型选择相应的解析器
 - ✅ 显示当前项目类型信息
+
+### 5. 异常处理
+
+- ✅ **Exception 解析** - 自动解析 C# Exception 对象
+- ✅ **详细信息显示** - 显示异常类型、消息、来源、HResult、堆栈跟踪等
+- ✅ **堆栈跟踪链接** - 堆栈跟踪中的文件路径和行号可点击，直接跳转到代码位置
+- ✅ **内部异常支持** - 支持显示内部异常信息
+- ✅ **异常数据字典** - 显示 Exception.Data 中的键值对
 
 ## 📦 安装
 
@@ -181,9 +192,10 @@ dict.Add("city", "北京");
 | 数组 (Array)             | 普通数组             | `int[]`, `string[]`          |
 | 对象 (Object)            | C# 对象              | 自定义类实例                 |
 | JSON 字符串              | 自动解析             | `"[{\"id\":1}]"`             |
+| Exception                | 异常对象             | `System.Exception`           |
 | 基本类型                 | int, string, bool 等 | `123`, `"hello"`, `true`     |
 
-> 💡 **提示**：更多类型支持正在开发中
+> 💡 **提示**：更多类型支持正在开发中，详见 [扩展指南](./扩展指南.md)
 
 ## 🛠️ 开发指南
 

@@ -29,6 +29,7 @@
 - ✅ **DataTable** - System.Data.DataTable（通过 Columns 和 Rows 解析）
 - ✅ **List<T>** - System.Collections.Generic.List<T>（通过索引访问元素）
 - ✅ **Dictionary<TKey, TValue>** - 键值对集合（通过 KeyValuePair 解析）
+- ✅ **Exception** - System.Exception 及其派生类（显示异常详细信息）
 - ✅ **数组 (Array)** - 普通数组
 - ✅ **对象 (Object)** - C# 对象
 - ✅ **JSON 字符串** - 自动解析 JSON 字符串
@@ -54,6 +55,14 @@ dict.Add("city", "北京");
 - 每个 KeyValuePair 通过其 `variablesReference` 获取 Key 和 Value 属性
 - 如果无法通过 `variablesReference` 获取，会尝试从字符串格式 `{[key, value]}` 中解析
 - 最终显示为两列表格：键、值
+
+**Exception 解析说明：**
+- Exception 通过 `variablesReference` 获取子变量（Message、StackTrace、Source 等）
+- 显示异常类型、消息、来源、HResult、堆栈跟踪等信息
+- 堆栈跟踪中的文件路径和行号会自动转换为可点击链接
+- 点击链接可以直接跳转到对应的代码位置
+- 支持内部异常（InnerException）的递归解析
+- 支持异常数据字典（Exception.Data）的显示
 
 ## 🏗️ 架构设计
 
